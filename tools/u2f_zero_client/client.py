@@ -73,7 +73,7 @@ class commands:
     U2F_CUSTOM_WINK = 0x24
 
 
-if len(sys.argv) not in [2,3,4,5,6]:
+if len(sys.argv) < 2:
     print('usage: %s <action> [<arguments>] [-s serial-number]' % sys.argv[0])
     print('actions: ')
     print("""   configure <ecc-private-key> <output-file>: setup the device configuration.  Specify ECC P-256 private
@@ -164,7 +164,7 @@ def get_write_mask(key):
 
 
 
-def do_configure(h,pemkey,output):
+def do_configure(h, pemkey, output, wkey, rkey):
     config = "\x01\x23\x6d\x10\x00\x00\x50\x00\xd7\x2c\xa5\x71\xee\xc0\x85\x00\xc0\x00\x55\x00\x83\x71\x81\x01\x83\x71\xC1\x01\x83\x71\x83\x71\x83\x71\xC1\x71\x01\x01\x83\x71\x83\x71\xC1\x71\x83\x71\x83\x71\x83\x71\x83\x71\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x55\x55\xff\xff\x00\x00\x00\x00\x00\x00\x13\x00\x3C\x00\x13\x00\x3C\x00\x13\x00\x3C\x00\x13\x00\x3C\x00\x3c\x00\x3C\x00\x13\x00\x3C\x00\x13\x00\x3C\x00\x13\x00\x33\x00"
 
 
@@ -207,8 +207,20 @@ def do_configure(h,pemkey,output):
     #data = array.array('B',data).tostring()
     #pubkey = binascii.hexlify(data)
 
-    wkey = [random.randint(0,255)&0xff for x in range(0,32)]
-    rkey = [random.randint(0,255)&0xff for x in range(0,32)]
+    if wkey is None:
+        print('generating a new random wkey')
+        # TODO: use urandom for that
+        wkey = [random.randint(0,255)&0xff for x in range(0,32)]
+    else:
+        print('using provided wkey instead of generating one')
+
+    if rkey is None:
+        print('generating a new random rkey')
+        # TODO: use urandom for that
+        rkey = [random.randint(0,255)&0xff for x in range(0,32)]
+    else:
+        print('using provided rkey instead of generating one')
+
     h.write([0,commands.U2F_CONFIG_LOAD_TRANS_KEY]+wkey)
     data = read_n_tries(h,5,64,1000)
     if data[1] != 1:
@@ -329,19 +341,35 @@ if __name__ == '__main__':
     action = sys.argv[1].lower()
     h = None
     SN = None
+    wkey = None
+    rkey = None
     if '-s' in sys.argv:
         if sys.argv.index('-s') + 1 > len(sys.argv):
             print('need serial number')
             sys.exit(1)
         SN = sys.argv[sys.argv.index('-s') + 1]
 
+    if '-w' in sys.argv:
+        if sys.argv.index('-w') + 1 > len(sys.argv):
+            print('need wkey after -w')
+            sys.exit(1)
+        wkey_hex = sys.argv[sys.argv.index('-w') + 1]
+        wkey = [ord(x) for x in binascii.unhexlify(wkey_hex)]
+
+    if '-r' in sys.argv:
+        if sys.argv.index('-r') + 1 > len(sys.argv):
+            print('need rkey after -r')
+            sys.exit(1)
+        rkey_hex = sys.argv[sys.argv.index('-r') + 1]
+        rkey = [ord(x) for x in binascii.unhexlify(rkey_hex)]
+
     if action == 'configure':
         h = open_u2f(SN)
-        if len(sys.argv) not in [4,6]:
+        if len(sys.argv) < 4:
             print( 'error: need ecc private key and an output file')
             h.close()
             sys.exit(1)
-        do_configure(h, sys.argv[2],sys.argv[3])
+        do_configure(h, sys.argv[2], sys.argv[3], wkey, rkey)
     elif action == 'rng':
         h = open_u2f(SN)
         do_rng(h)

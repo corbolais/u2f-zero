@@ -1,11 +1,55 @@
 #!/bin/bash
 
+# The keys (rkey and wkey) could be given using the -w and -r flags as follows:
+#   ./setup_device.sh -w 01020304..... -r f1f2f3f4.....
+# where 01020304..... is a hex-encoded 32-byte data. For example, this is how
+# one could generate random keys, store into an environment variables, and
+# then pass them to setup_device.sh on Linux:
+#
+# $ MY_WKEY=$(dd if=/dev/urandom bs=1 count=32 | od -t x1 -An | tr -d '\n ')
+# $ MY_RKEY=$(dd if=/dev/urandom bs=1 count=32 | od -t x1 -An | tr -d '\n ')
+# $ ./setup_device.sh -w ${MY_WKEY} -r ${MY_RKEY} gencert/ca/key.pem gencert/ca/cert.der
+
+
 SETUP_HEX=../firmware/SETUP.hex
 FINAL_HEX=../firmware/release/u2f-firmware.hex
 FLASH_TOOLS=0
+WKEY_ARG=''
+RKEY_ARG=''
 SN=
 SN_build=
 SN_setup=
+
+# Parse keys
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -w|--wkey)
+      shift
+      if [[ $# < 1 ]]; then
+        echo "expected wkey hex after -w"
+        exit 1
+      fi
+
+      WKEY_ARG="-w $1"
+      shift
+      ;;
+
+    -r|--rkey)
+      shift
+      if [[ $# < 1 ]]; then
+        echo "expected rkey hex after -r"
+        exit 1
+      fi
+
+      RKEY_ARG="-r $1"
+      shift
+      ;;
+
+    *)
+      break
+      ;;
+  esac
+done
 
 if [[ $# != "2" ]] && [[ $# != "6" ]]
 then
@@ -48,21 +92,18 @@ fi
 
 echo "configuring..."
 
-if [[ -n $SN_setup ]] ; then
-    client.py configure $attest_priv pubkey.hex -s $SN_setup #>/dev/null
-else
-    client.py configure $attest_priv pubkey.hex #>/dev/null
-fi
-
-while [[ "$?" -ne "0" ]] ; do
-    sleep .2
-
+while true; do
     if [[ -n $SN_setup ]] ; then
-        client.py configure $attest_priv pubkey.hex -s $SN_setup
+        client.py configure $attest_priv pubkey.hex -s $SN_setup ${WKEY_ARG} ${RKEY_ARG}
     else
-        client.py configure $attest_priv pubkey.hex
+        client.py configure $attest_priv pubkey.hex ${WKEY_ARG} ${RKEY_ARG}
     fi
 
+    if [[ "$?" -eq "0" ]]; then
+        break
+    else
+        sleep 0.2
+    fi
 done
 
 
